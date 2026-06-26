@@ -97,6 +97,8 @@ function ensureSafeWarning(text, opts = {}) {
   const alreadyHasWarning =
     lower.includes('do not share your pin') ||
     lower.includes('do not share your otp') ||
+    lower.includes('we never ask for your pin') ||
+    lower.includes('কোনো অবস্থাতেই') ||
     text.includes('শেয়ার করবেন না');
   if (alreadyHasWarning) return text;
   return `${text} ${warning}`;

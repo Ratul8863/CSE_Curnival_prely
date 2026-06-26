@@ -2,7 +2,7 @@
 
 Production-style Node.js + Express backend API for the SUST CSE Carnival 2026 Codex Community Hackathon preliminary round.
 
-This service is a **digital finance support-ticket investigator**. It takes one support ticket, reads the complaint and the user's `transaction_history`, and returns a structured JSON response with a `case_type`, an `evidence_verdict`, severity, routing, and a safe customer reply. There is **no frontend** and **no database**.
+This service is a **digital finance support-ticket investigator**. It takes one support ticket, reads the complaint and the user's `transaction_history`, and returns a structured JSON response with a `case_type`, an `evidence_verdict`, severity, routing, and a safe customer reply. There is **no database**. A lightweight static HTML tester page is bundled under `public/` for manual API testing/demo convenience; the judged surface is the backend API itself, and the page is not required for any scoring criterion.
 
 ---
 
@@ -10,7 +10,7 @@ This service is a **digital finance support-ticket investigator**. It takes one 
 
 ```bash
 npm install
-cp .env.example .env       # optional, only if you want to set PORT or GROQ_API_KEY
+cp .env.example .env       # optional, only if you want to override PORT
 npm run dev                # local development with nodemon
 # or
 npm start                  # production-style start (node server.js)
@@ -73,7 +73,7 @@ Returns:
   "department": "dispute_resolution",
   "agent_summary": "Customer reports a transfer sent to the wrong recipient (likely txn TXN-9101).",
   "recommended_next_action": "Verify recipient history and refer to dispute_resolution for review.",
-  "customer_reply": "We have received your complaint. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.",
+  "customer_reply": "We have noted your concern about transaction TXN-9101. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only. Please do not share your PIN or OTP with anyone.",
   "human_review_required": true,
   "confidence": 0.8,
   "reason_codes": [
@@ -113,11 +113,7 @@ scripts/test-official-samples.js  Runs docs/SUST_Preli_Sample_Cases.json
 
 ## AI / model usage
 
-The service is **deterministic by design**. The default path is the rule-based analyzer in `services/ruleAnalyzer.js`. It does **not** call any external AI service and works with no API keys.
-
-If you want to plug in Groq later, drop `GROQ_API_KEY` into `.env` (and optionally `GROQ_MODEL`, default `llama-3.1-8b-instant`). The analyzer should still be treated as the source of truth for `case_type`, `evidence_verdict`, `relevant_transaction_id`, `severity`, `department`, and `human_review_required`. Any AI polish must be funneled through `utils/safety.js` and `utils/validator.js` before responding.
-
-If the key is missing, expired, slow, or the model errors out, the API still returns a valid rule-based response.
+The submitted service is **deterministic and rule-based**. It does **not** call any external LLM, AI API, or third-party service at runtime, and **no API key is required** for judging. All classification, evidence verdicts, routing, severity decisions, and human-review flags are produced by the rule-based analyzer in `services/ruleAnalyzer.js`. The only runtime dependencies are `express`, `cors`, and `dotenv`.
 
 ---
 
@@ -125,17 +121,15 @@ If the key is missing, expired, slow, or the model errors out, the API still ret
 
 Before any response is returned, `utils/safety.js` runs a sanitizer:
 
-1. Strips or rewrites phrases that promise a refund, reversal, or unblock:
-   - `we will refund you` → `any eligible amount will be returned through official channels`
-   - `we reversed it` → `our team will review the case`
-   - `your money will be returned` → `any eligible amount will be returned through official channels`
-2. Removes requests that ask the customer to share/send/provide a PIN, OTP, password, CVV, or card number.
-3. Removes instructions that push the customer to a third-party phone number.
-4. Appends a safe credential warning when the topic touches credentials or fraud:
+1. **No refund / reversal promises.** Any hard promise (`we will refund you`, `we reversed it`, `your money will be returned`, `guaranteed refund`, `account unblocked`, …) is rewritten to a safe hedge such as `any eligible amount will be returned through official channels`.
+2. **No credential asks.** Imperative requests to share/send/provide a PIN, OTP, password, CVV, or card number are stripped.
+3. **No third-party phone numbers.** Phrases pushing the customer to call or contact a non-official number are replaced with `contact official support channels only`.
+4. **Safe credential warning appended to every `customer_reply`.** After sanitization, `ensureSafeWarning` guarantees the reply ends with the language-appropriate reminder:
    - EN: `Please do not share your PIN or OTP with anyone.`
    - BN: `অনুগ্রহ করে কারো সাথে আপনার পিন বা ওটিপি শেয়ার করবেন না।`
+   - For phishing cases the analyzer substitutes a stronger single-statement warning ("We never ask for your PIN, OTP, or password under any circumstances…"), so the regular line is not double-appended.
 
-Adversarial instructions inside the complaint (`ignore previous instructions`, `system prompt`, `override`, `pretend`, `you are now`, etc.) are ignored — the analyzer only reads the complaint as user input.
+Adversarial instructions inside the complaint (`ignore previous instructions`, `system prompt`, `override`, `pretend`, `you are now`, etc.) are neutralized — `utils/validator.js` drops the offending sentence before the analyzer ever reads the text.
 
 Finally, `utils/validator.js` re-checks every field against the allowed enum lists and clamps values into a safe shape before sending.
 
@@ -158,7 +152,10 @@ Finally, `utils/validator.js` re-checks every field against the allowed enum lis
 
 ## Language behavior
 
-If `language === "bn"` or the complaint is mostly Bangla, the `customer_reply` is produced in Bangla. `agent_summary` and `recommended_next_action` are kept in English for internal support agents.
+If `language === "bn"` or the complaint is mostly Bangla, the `customer_reply` is produced in Bangla. `agent_summary` and `recommended_next_action` are always in English because they target internal support agents, not the customer. When a relevant transaction is identified, the customer reply opens with a transaction-anchored line in the customer's language:
+
+- EN: `We have noted your concern about transaction {TXN_ID}.`
+- BN: `আপনার লেনদেন {TXN_ID} এর বিষয়ে আমরা অবগত হয়েছি।`
 
 ---
 
@@ -224,4 +221,4 @@ Latest local run:
 - No database or persistent state. Every request is processed independently.
 - No real payment-API integration; transaction matching is purely structural.
 - The rule-based analyzer is intentionally conservative — ambiguous cases are marked `insufficient_data` and routed to human review rather than auto-decided.
-- Groq, if configured, is treated as a polite-text polisher; it must not change the underlying classification.
+- The optional static HTML page under `public/` is for manual testing only and is not part of the judging surface.

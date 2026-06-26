@@ -86,6 +86,26 @@ function parseCounterpartyHint(text) {
   return null;
 }
 
+const DEDUCTED_PHRASES = [
+  'deducted', 'money deducted', 'balance deducted', 'amount deducted',
+  'but money was', 'but the money was', 'but balance was',
+  'balance deducted', 'কেটে', 'কাটা', 'কেটে নেওয়া', 'কেটে নিয়েছে',
+];
+
+function complaintMentionsDeduction(text) {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  return DEDUCTED_PHRASES.some((p) => lower.includes(p));
+}
+
+function findTxnById(history, id) {
+  if (!id) return null;
+  for (const t of history || []) {
+    if (t && t.transaction_id === id) return t;
+  }
+  return null;
+}
+
 function txIs(txn, type, statuses = null) {
   if (!txn || txn.type !== type) return false;
   if (!statuses) return true;
@@ -119,29 +139,49 @@ function detectLanguage(req) {
   return 'en';
 }
 
-// Decide severity based on case_type and amount.
-function pickSeverity(caseType, amount, isPhishing) {
+// Decide severity based on case_type, evidence verdict, and amount.
+function pickSeverity(caseType, amount, isPhishing, opts = {}) {
+  const verdict = opts.verdict;
+  const hasFailedOrPending = !!opts.hasFailedOrPending;
+  const mentionsDeducted = !!opts.mentionsDeducted;
+  const ambiguous = !!opts.ambiguous;
+
   if (isPhishing) return 'critical';
   if (amount >= SEVERITY_AMOUNT.criticalMin) return 'critical';
+
+  // Wrong-transfer / duplicate / agent cash-in are normally high, but demote
+  // to medium when the evidence is inconsistent (likely a repeated-recipient
+  // pattern or a contested dispute) — still human-reviewed, just less acute.
   if (caseType === 'wrong_transfer' || caseType === 'duplicate_payment' || caseType === 'agent_cash_in_issue') {
-    if (amount >= SEVERITY_AMOUNT.highMin) return 'high';
+    if (verdict === 'inconsistent') return 'medium';
     return 'high';
   }
+
+  // Payment_failed: bump to high when there is a real failed/pending record AND
+  // the customer explicitly mentions a deduction.
   if (caseType === 'payment_failed') {
+    if (hasFailedOrPending && mentionsDeducted) return 'high';
     return amount >= SEVERITY_AMOUNT.highMin ? 'high' : 'medium';
   }
+
   if (caseType === 'merchant_settlement_delay') {
     return amount >= SEVERITY_AMOUNT.mediumMin ? 'medium' : 'low';
   }
+
   if (caseType === 'refund_request') {
     if (amount >= SEVERITY_AMOUNT.highMin) return 'high';
     if (amount >= SEVERITY_AMOUNT.mediumMin) return 'medium';
     return 'low';
   }
+
   if (caseType === 'other') {
-    // Vague complaints without clear evidence default to low.
+    // Vague complaints default to low, but bump to medium when the matcher
+    // surfaced ambiguous multiple plausible transaction matches — still
+    // under-evidenced, but worth a closer look.
+    if (ambiguous || verdict === 'insufficient_data') return 'medium';
     return 'low';
   }
+
   return 'medium';
 }
 
@@ -369,134 +409,172 @@ function matchRelevantTransaction(caseType, req, signals) {
   }
 }
 
+// Stronger phishing warning. We only append the regular safe-warning line if
+// this one isn't already in the reply, to avoid duplicated credentials text.
+const PHISHING_STRONG_WARNING_EN =
+  'We never ask for your PIN, OTP, or password under any circumstances. Please do not share these with anyone, even if they claim to be from us.';
+const PHISHING_STRONG_WARNING_BN =
+  'আমরা কোনো অবস্থাতেই আপনার পিন, ওটিপি বা পাসওয়ার্ড চাই না। অনুগ্রহ করে কেউ নিজেকে আমাদের বলে দাবি করলেও এগুলো কারো সাথে শেয়ার করবেন না।';
+const PHISHING_REPLY_TAIL_EN =
+  ' Our fraud team will review this through official channels.';
+const PHISHING_REPLY_TAIL_BN =
+  ' আমাদের ফ্রড টিম এটি শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে পর্যালোচনা করবে।';
+
+// Build a one-line English description of a transaction for agent summaries.
+function describeTxn(t) {
+  if (!t) return null;
+  const parts = [];
+  parts.push(`txn ${t.transaction_id}`);
+  if (t.type) parts.push(`type=${t.type}`);
+  if (Number.isFinite(t.amount)) parts.push(`amount=${t.amount}`);
+  if (t.counterparty) parts.push(`counterparty=${t.counterparty}`);
+  if (t.status) parts.push(`status=${t.status}`);
+  return parts.join(', ');
+}
+
+// Customer-reply opening lines. When relevant_transaction_id is known we lead
+// with it so the customer sees the case is anchored to the right record.
+function customerOpening(language, txnId) {
+  const isBn = language === 'bn';
+  if (txnId) {
+    return isBn
+      ? `আপনার লেনদেন ${txnId} এর বিষয়ে আমরা অবগত হয়েছি।`
+      : `We have noted your concern about transaction ${txnId}.`;
+  }
+  return isBn
+    ? 'আমরা আপনার অভিযোগ পেয়েছি।'
+    : 'We have received your complaint.';
+}
+
 function buildSummaryAndReply(caseType, req, language, severity, relevantTxnId) {
   const amount = parseAmount(req.complaint);
   const amountStr = amount != null ? `${amount}` : 'the mentioned';
   const isBn = language === 'bn';
+  const txn = findTxnById(req.transaction_history || [], relevantTxnId);
 
   if (caseType === 'phishing_or_social_engineering') {
-    if (isBn) {
-      return {
-        agent_summary: 'গ্রাহক সন্দেহজনক ক্রেডেনশিয়াল শেয়ারিং বা স্ক্যাম কলের কথা জানিয়েছেন। তাৎক্ষণিক ফ্রড রিস্ক রিভিউ প্রয়োজন।',
-        recommended_next_action: 'অ্যাকাউন্ট অ্যাক্সেস ফ্ল্যাগ করুন এবং fraud_risk টিমে রেফার করুন; গ্রাহকের সাথে যোগাযোগ শুধুমাত্র অফিসিয়াল চ্যানেলে নিশ্চিত করুন।',
-        customer_reply: 'আমরা আপনার রিপোর্ট পেয়েছি। নিরাপত্তার জন্য অনুগ্রহ করে কারো সাথে আপনার পিন, ওটিপি বা পাসওয়ার্ড শেয়ার করবেন না। আমাদের টিম শুধুমাত্র অফিসিয়াল চ্যানেল থেকে যোগাযোগ করবে।',
-      };
-    }
+    const strong = isBn ? PHISHING_STRONG_WARNING_BN : PHISHING_STRONG_WARNING_EN;
+    const tail = isBn ? PHISHING_REPLY_TAIL_BN : PHISHING_REPLY_TAIL_EN;
     return {
-      agent_summary: 'Customer reports a possible credential-share or scam contact. Treat as urgent fraud risk and do not contact from unofficial channels.',
+      agent_summary: 'Customer reports a possible credential-sharing or social engineering attempt. Treat as urgent fraud risk; do not contact from unofficial channels.',
       recommended_next_action: 'Flag the account for fraud_risk review and verify any recent activity through official channels only.',
-      customer_reply: 'We have received your report. Please do not share your PIN, OTP, or password with anyone. Our team will contact you only through official channels.',
+      // The strong warning IS the credential guard for this case; the regular
+      // safe warning in safety.js will not double-append because the marker
+      // phrases are already present.
+      customer_reply: `${customerOpening(language, null)} ${strong}${tail}`,
     };
   }
 
   if (caseType === 'wrong_transfer') {
-    if (isBn) {
-      return {
-        agent_summary: `গ্রাহক ভুল নম্বরে টাকা পাঠিয়ে ফেলেছেন বলে জানিয়েছেন${relevantTxnId ? ` (সম্ভাব্য লেনদেন ${relevantTxnId})` : ''}।`,
-        recommended_next_action: 'প্রাপক ইতিহাস যাচাই করুন এবং dispute_resolution টিমে রেফার করুন।',
-        customer_reply: relevantTxnId
-          ? 'আমরা আপনার অভিযোগ পেয়েছি। আমাদের টিম লেনদেনটি যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে। যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
-          : 'আপনার অভিযোগ পেয়েছি। সঠিক লেনদেন শনাক্ত করতে দয়া করে প্রাপকের নম্বর বা লেনদেন আইডি শেয়ার করুন। অনুগ্রহ করে কারো সাথে আপনার পিন বা ওটিপি শেয়ার করবেন না।',
-      };
-    }
+    const summary = txn
+      ? `Customer reports a transfer sent to the wrong recipient. ${describeTxn(txn)}.`
+      : 'Customer reports a transfer sent to the wrong recipient, but no single transaction could be matched.';
+    const action = relevantTxnId
+      ? 'Verify recipient history and refer to dispute_resolution for review.'
+      : 'Reply asking the customer for the recipient number or transaction id so the correct transfer can be identified before any dispute is initiated.';
+    const replyTail = isBn
+      ? 'আমাদের টিম লেনদেনটি যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে। যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
+      : 'Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.';
     return {
-      agent_summary: `Customer reports a transfer sent to the wrong recipient${relevantTxnId ? ` (likely txn ${relevantTxnId})` : ''}.`,
-      recommended_next_action: relevantTxnId
-        ? 'Verify recipient history and refer to dispute_resolution for review.'
-        : 'Reply asking the customer for the recipient number or transaction id so the correct transfer can be identified before any dispute is initiated.',
+      agent_summary: summary,
+      recommended_next_action: action,
       customer_reply: relevantTxnId
-        ? 'We have received your complaint. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.'
-        : 'Thank you for reaching out. We see multiple transfers on that date. Could you share the recipient number so we can identify the right transaction? Please do not share your PIN or OTP with anyone.',
+        ? `${customerOpening(language, relevantTxnId)} ${replyTail}`
+        : `${customerOpening(language, null)} ${isBn
+            ? 'সঠিক লেনদেন শনাক্ত করতে দয়া করে প্রাপকের নম্বর বা লেনদেন আইডি শেয়ার করুন।'
+            : 'Please reply with the transaction id from your in-app history so we can identify the right one.'}`,
     };
   }
 
   if (caseType === 'payment_failed') {
-    if (isBn) {
-      return {
-        agent_summary: `গ্রাহক জানিয়েছেন পেমেন্ট ব্যর্থ হয়েছে কিন্তু ব্যালেন্স থেকে ${amountStr} টাকা কেটে নেওয়া হয়েছে।`,
-        recommended_next_action: 'payments_ops টিম নিশ্চিত করুক যে কোনো বকেয়া রিভার্সাল শুধুমাত্র অফিসিয়াল চ্যানেলে প্রসেস হবে।',
-        customer_reply: 'আমরা আপনার পেমেন্ট সংক্রান্ত অভিযোগটি পেয়েছি। আমাদের টিম যাচাই করছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।',
-      };
-    }
+    const summary = txn
+      ? `Customer reports a failed payment of ${amountStr} with claimed balance deduction. ${describeTxn(txn)}.`
+      : `Customer reports a failed payment of ${amountStr} with claimed balance deduction.`;
+    const replyTail = isBn
+      ? 'আমাদের টিম যাচাই করছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
+      : 'Our team is reviewing it and any eligible amount will be returned through official channels only.';
     return {
-      agent_summary: `Customer reports a failed payment of ${amountStr} with claimed balance deduction.`,
+      agent_summary: summary,
       recommended_next_action: 'Route to payments_ops to verify settlement status; any eligible reversal must be processed through official channels.',
-      customer_reply: 'We have received your payment complaint. Our team is reviewing it and any eligible amount will be returned through official channels only.',
+      customer_reply: relevantTxnId
+        ? `${customerOpening(language, relevantTxnId)} ${replyTail}`
+        : `${customerOpening(language, null)} ${replyTail}`,
     };
   }
 
   if (caseType === 'duplicate_payment') {
-    if (isBn) {
-      return {
-        agent_summary: `গ্রাহক একই পেমেন্ট দুবার কেটে যাওয়ার অভিযোগ করেছেন${relevantTxnId ? ` (সন্দেহভাজন লেনদেন ${relevantTxnId})` : ''}।`,
-        recommended_next_action: 'payments_ops টিমকে দুটি লেনদেনের বিবরণ মিলিয়ে দেখুন এবং প্রয়োজনে রিভার্সাল শুধুমাত্র অফিসিয়াল চ্যানেলে প্রসেস করুন।',
-        customer_reply: 'আমরা আপনার ডুপ্লিকেট পেমেন্টের অভিযোগ পেয়েছি। আমাদের টিম যাচাই করছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।',
-      };
-    }
+    const summary = txn
+      ? `Customer reports being charged twice. ${describeTxn(txn)}.`
+      : 'Customer reports being charged twice.';
+    const replyTail = isBn
+      ? 'আমাদের টিম দুটি লেনদেনের বিবরণ মিলিয়ে দেখছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
+      : 'Our team is comparing the two payments and any eligible amount will be returned through official channels only.';
     return {
-      agent_summary: `Customer reports being charged twice${relevantTxnId ? ` (suspected txn ${relevantTxnId})` : ''}.`,
+      agent_summary: summary,
       recommended_next_action: 'Have payments_ops compare the two payments; any eligible reversal must be processed through official channels.',
-      customer_reply: 'We have received your duplicate payment complaint. Our team is verifying it and any eligible amount will be returned through official channels only.',
+      customer_reply: relevantTxnId
+        ? `${customerOpening(language, relevantTxnId)} ${replyTail}`
+        : `${customerOpening(language, null)} ${replyTail}`,
     };
   }
 
   if (caseType === 'refund_request') {
-    if (isBn) {
-      return {
-        agent_summary: `গ্রাহক একটি সম্পন্ন পেমেন্টের রিফান্ড চাইছেন${relevantTxnId ? ` (লেনদেন ${relevantTxnId})` : ''}।`,
-        recommended_next_action: 'customer_support টিম যোগ্যতা যাচাই করুক; কোনো রিফান্ড শুধুমাত্র অফিসিয়াল চ্যানেলে প্রসেস হবে।',
-        customer_reply: 'আমরা আপনার রিফান্ড অনুরোধ পেয়েছি। আমাদের টিম যাচাই করছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।',
-      };
-    }
+    const summary = txn
+      ? `Customer requests a refund for a completed payment. ${describeTxn(txn)}.`
+      : 'Customer requests a refund for a completed payment.';
+    const replyTail = isBn
+      ? 'আমাদের টিম যোগ্যতা যাচাই করছে এবং যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
+      : 'Our team is reviewing eligibility and any eligible amount will be returned through official channels only.';
     return {
-      agent_summary: `Customer requests a refund for a completed payment${relevantTxnId ? ` (txn ${relevantTxnId})` : ''}.`,
+      agent_summary: summary,
       recommended_next_action: 'Route to customer_support for eligibility review; any refund must be processed through official channels only.',
-      customer_reply: 'We have received your refund request. Our team is reviewing it and any eligible amount will be returned through official channels only.',
+      customer_reply: relevantTxnId
+        ? `${customerOpening(language, relevantTxnId)} ${replyTail}`
+        : `${customerOpening(language, null)} ${replyTail}`,
     };
   }
 
   if (caseType === 'merchant_settlement_delay') {
-    if (isBn) {
-      return {
-        agent_summary: `মার্চেন্ট সেটেলমেন্টে বিলম্বের অভিযোগ${relevantTxnId ? ` (সেটেলমেন্ট ${relevantTxnId})` : ''}।`,
-        recommended_next_action: 'merchant_operations টিমকে সেটেলমেন্ট স্ট্যাটাস যাচাই করতে দিন।',
-        customer_reply: 'আমরা আপনার সেটেলমেন্ট সংক্রান্ত অভিযোগ পেয়েছি। আমাদের টিম যাচাই করছে এবং প্রয়োজনীয় ব্যবস্থা নেবে।',
-      };
-    }
+    const summary = txn
+      ? `Merchant reports a settlement delay. ${describeTxn(txn)}.`
+      : 'Merchant reports a settlement delay.';
     return {
-      agent_summary: `Merchant reports a settlement delay${relevantTxnId ? ` (settlement ${relevantTxnId})` : ''}.`,
-      recommended_next_action: 'Have merchant_operations verify the settlement status.',
-      customer_reply: 'We have received your settlement complaint. Our team is reviewing it and will take the appropriate steps.',
+      agent_summary: summary,
+      recommended_next_action: 'Have merchant_operations verify the settlement status and update the merchant through official channels.',
+      customer_reply: relevantTxnId
+        ? `${customerOpening(language, relevantTxnId)} ${isBn
+            ? 'আমাদের টিম সেটেলমেন্ট স্ট্যাটাস যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।'
+            : 'Our team is verifying the settlement status and will take the appropriate steps.'}`
+        : `${customerOpening(language, null)} ${isBn
+            ? 'আমাদের টিম সেটেলমেন্ট স্ট্যাটাস যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।'
+            : 'Our team is verifying the settlement status and will take the appropriate steps.'}`,
     };
   }
 
   if (caseType === 'agent_cash_in_issue') {
-    if (isBn) {
-      return {
-        agent_summary: `গ্রাহক এজেন্টের মাধ্যমে ক্যাশ-ইন সমস্যার কথা জানিয়েছেন${relevantTxnId ? ` (লেনদেন ${relevantTxnId})` : ''}।`,
-        recommended_next_action: 'agent_operations টিমকে ক্যাশ-ইন রেকর্ড যাচাই করতে রেফার করুন।',
-        customer_reply: 'আমরা আপনার ক্যাশ-ইন অভিযোগ পেয়েছি। আমাদের টিম এজেন্ট রেকর্ড যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।',
-      };
-    }
+    const summary = txn
+      ? `Customer reports an agent cash-in issue. ${describeTxn(txn)}.`
+      : 'Customer reports an agent cash-in issue.';
     return {
-      agent_summary: `Customer reports an agent cash-in issue${relevantTxnId ? ` (txn ${relevantTxnId})` : ''}.`,
+      agent_summary: summary,
       recommended_next_action: 'Refer to agent_operations to verify the cash-in record with the field agent.',
-      customer_reply: 'We have received your cash-in complaint. Our team will verify the agent record and take the appropriate steps.',
+      customer_reply: relevantTxnId
+        ? `${customerOpening(language, relevantTxnId)} ${isBn
+            ? 'আমাদের টিম এজেন্ট রেকর্ড যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।'
+            : 'Our team will verify the agent record and take the appropriate steps.'}`
+        : `${customerOpening(language, null)} ${isBn
+            ? 'আমাদের টিম এজেন্ট রেকর্ড যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।'
+            : 'Our team will verify the agent record and take the appropriate steps.'}`,
     };
   }
 
   // other
-  if (isBn) {
-    return {
-      agent_summary: 'গ্রাহকের অভিযোগ স্পষ্টভাবে কোনো নির্দিষ্ট কেস টাইপে পড়ছে না।',
-      recommended_next_action: 'অতিরিক্ত তথ্য সংগ্রহ করে customer_support এ ট্রায়াজ করুন।',
-      customer_reply: 'আমরা আপনার অভিযোগ পেয়েছি। আমাদের টিম যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।',
-    };
-  }
   return {
     agent_summary: 'Customer complaint does not clearly fit a specific case type.',
     recommended_next_action: 'Collect more details and triage through customer_support.',
-    customer_reply: 'We have received your complaint. Our team will review it and take the appropriate steps.',
+    customer_reply: isBn
+      ? `${customerOpening(language, null)} আমাদের টিম যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে।`
+      : `${customerOpening(language, null)} Our team will review it and take the appropriate steps.`,
   };
 }
 
@@ -517,12 +595,23 @@ function analyzeTicket(req) {
   }
 
   const maxAmount = Math.max(parseAmount(req.complaint) || 0, highestAmount(req.transaction_history || []));
-  const severity = pickSeverity(caseType, maxAmount, caseType === 'phishing_or_social_engineering');
+  const hasFailedOrPending = hasFailedOrPendingPaymentInHistory(req);
+  const mentionsDeducted = complaintMentionsDeduction(req.complaint);
+  // "Ambiguous" here means the matcher surfaced multiple plausible transaction
+  // candidates but couldn't pick one — used by pickSeverity to bump "other".
+  const ambiguous = typeof match.extraReason === 'string'
+    && /multiple_/.test(match.extraReason);
+  const severity = pickSeverity(caseType, maxAmount, caseType === 'phishing_or_social_engineering', {
+    verdict,
+    hasFailedOrPending,
+    mentionsDeducted,
+    ambiguous,
+  });
   const department = defaultDepartment(caseType);
   const humanReview = humanReviewFor(caseType, severity, verdict, maxAmount);
 
   const { agent_summary, recommended_next_action, customer_reply } = buildSummaryAndReply(
-    caseType, req, language, severity, txnId
+    caseType, req, language, severity, txnId, match
   );
 
   // Reason codes

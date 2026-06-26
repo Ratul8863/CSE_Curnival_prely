@@ -139,7 +139,7 @@ function pickSeverity(caseType, amount, isPhishing) {
     return 'low';
   }
   if (caseType === 'other') {
-    if (amount >= SEVERITY_AMOUNT.mediumMin) return 'medium';
+    // Vague complaints without clear evidence default to low.
     return 'low';
   }
   return 'medium';
@@ -168,10 +168,20 @@ function humanReviewFor(caseType, severity, evidenceVerdict, amount) {
   if (sev === 'critical' || sev === 'high') return true;
   if (evidenceVerdict === 'insufficient_data' && (caseType === 'wrong_transfer' || caseType === 'duplicate_payment')) return true;
   if (Number.isFinite(amount) && amount >= SEVERITY_AMOUNT.highMin) return true;
+  // Vague complaints with no evidence: do not flag for human review yet —
+  // wait for the customer to provide disambiguating detail.
+  if (caseType === 'other' && evidenceVerdict === 'insufficient_data') return false;
   return false;
 }
 
 function pickCaseType(text, req, signals) {
+  // Hard override: if the customer is reporting a failed payment/recharge/bill
+  // and transaction_history has a matching failed/pending payment, classify
+  // as payment_failed even if the complaint also mentions refund wording.
+  if (signals.paymentFailedHits > 0 && hasFailedOrPendingPaymentInHistory(req)) {
+    return 'payment_failed';
+  }
+
   // Phishing is the highest priority signal.
   if (signals.phishingHits > 0) return 'phishing_or_social_engineering';
   if (signals.duplicateHits > 0) return 'duplicate_payment';
@@ -183,6 +193,17 @@ function pickCaseType(text, req, signals) {
   // Heuristic: merchant channel or user_type without clear keywords => settlement-like.
   if (req.user_type === 'merchant' || req.channel === 'merchant_portal') return 'merchant_settlement_delay';
   return 'other';
+}
+
+// Used by the payment_failed hard-override above.
+function hasFailedOrPendingPaymentInHistory(req) {
+  const history = req.transaction_history || [];
+  for (const t of history) {
+    if (t && t.type === 'payment' && (t.status === 'failed' || t.status === 'pending')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function detectSignals(text) {
@@ -209,14 +230,48 @@ function matchRelevantTransaction(caseType, req, signals) {
       return { txnId: null, verdict: 'insufficient_data', extraReason: 'phishing_evidence_unverified' };
     case 'wrong_transfer': {
       let candidates = findTxnByFields(history, (t) => txIs(t, 'transfer'));
+
+      // Sort ascending so any "latest" pick is deterministic.
+      const sortedTransfers = candidates.slice().sort((a, b) => {
+        const ta = Date.parse(a.timestamp || '') || 0;
+        const tb = Date.parse(b.timestamp || '') || 0;
+        return ta - tb;
+      });
+
       if (amountHint != null) {
-        const byAmt = candidates.filter((t) => Number(t.amount) === amountHint);
-        if (byAmt.length === 1) return { txnId: byAmt[0].transaction_id, verdict: 'consistent', extraReason: 'transfer_amount_match' };
+        const byAmt = sortedTransfers.filter((t) => Number(t.amount) === amountHint);
+        if (byAmt.length === 1) {
+          // Even a single amount match may conflict with prior transfers to the
+          // same counterparty (an "established recipient" pattern). Treat as
+          // inconsistent so the dispute goes to human review.
+          const matched = byAmt[0];
+          const priorToSame = sortedTransfers.filter(
+            (t) => t.transaction_id !== matched.transaction_id
+              && t.counterparty
+              && t.counterparty === matched.counterparty
+          );
+          if (priorToSame.length >= 1) {
+            return {
+              txnId: matched.transaction_id,
+              verdict: 'inconsistent',
+              extraReason: 'established_recipient_pattern',
+            };
+          }
+          return { txnId: matched.transaction_id, verdict: 'consistent', extraReason: 'transfer_amount_match' };
+        }
         if (byAmt.length > 1) {
           const distinctCounterparties = new Set(byAmt.map((t) => t.counterparty).filter(Boolean));
           if (distinctCounterparties.size === 1) {
-            return { txnId: byAmt[0].transaction_id, verdict: 'inconsistent', extraReason: 'repeated_recipient_pattern' };
+            // Same amount repeated to the same counterparty => repeated recipient
+            // pattern. Return the latest but flag evidence as inconsistent.
+            const latest = byAmt[byAmt.length - 1];
+            return {
+              txnId: latest.transaction_id,
+              verdict: 'inconsistent',
+              extraReason: 'repeated_recipient_pattern',
+            };
           }
+          // Multiple amount matches with different counterparties => do not guess.
           return { txnId: null, verdict: 'insufficient_data', extraReason: 'multiple_transfer_matches' };
         }
       }
@@ -227,8 +282,11 @@ function matchRelevantTransaction(caseType, req, signals) {
           return { txnId: byCp[0].transaction_id, verdict: 'inconsistent', extraReason: 'repeated_recipient_pattern' };
         }
       }
+      // Multiple transfers exist but no amount/counterparty hint => ambiguous.
+      if (candidates.length > 1) {
+        return { txnId: null, verdict: 'insufficient_data', extraReason: 'multiple_transfer_candidates' };
+      }
       if (candidates.length === 1) return { txnId: candidates[0].transaction_id, verdict: 'consistent', extraReason: 'single_transfer_present' };
-      if (candidates.length > 1) return { txnId: null, verdict: 'insufficient_data', extraReason: 'multiple_transfer_candidates' };
       return { txnId: null, verdict: 'insufficient_data', extraReason: 'no_transfer_history' };
     }
     case 'payment_failed': {
@@ -336,13 +394,19 @@ function buildSummaryAndReply(caseType, req, language, severity, relevantTxnId) 
       return {
         agent_summary: `গ্রাহক ভুল নম্বরে টাকা পাঠিয়ে ফেলেছেন বলে জানিয়েছেন${relevantTxnId ? ` (সম্ভাব্য লেনদেন ${relevantTxnId})` : ''}।`,
         recommended_next_action: 'প্রাপক ইতিহাস যাচাই করুন এবং dispute_resolution টিমে রেফার করুন।',
-        customer_reply: 'আমরা আপনার অভিযোগ পেয়েছি। আমাদের টিম লেনদেনটি যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে। যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।',
+        customer_reply: relevantTxnId
+          ? 'আমরা আপনার অভিযোগ পেয়েছি। আমাদের টিম লেনদেনটি যাচাই করে প্রয়োজনীয় ব্যবস্থা নেবে। যেকোনো যোগ্য পরিমাণ শুধুমাত্র অফিসিয়াল চ্যানেলের মাধ্যমে ফেরত দেওয়া হবে।'
+          : 'আপনার অভিযোগ পেয়েছি। সঠিক লেনদেন শনাক্ত করতে দয়া করে প্রাপকের নম্বর বা লেনদেন আইডি শেয়ার করুন। অনুগ্রহ করে কারো সাথে আপনার পিন বা ওটিপি শেয়ার করবেন না।',
       };
     }
     return {
       agent_summary: `Customer reports a transfer sent to the wrong recipient${relevantTxnId ? ` (likely txn ${relevantTxnId})` : ''}.`,
-      recommended_next_action: 'Verify recipient history and refer to dispute_resolution for review.',
-      customer_reply: 'We have received your complaint. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.',
+      recommended_next_action: relevantTxnId
+        ? 'Verify recipient history and refer to dispute_resolution for review.'
+        : 'Reply asking the customer for the recipient number or transaction id so the correct transfer can be identified before any dispute is initiated.',
+      customer_reply: relevantTxnId
+        ? 'We have received your complaint. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.'
+        : 'Thank you for reaching out. We see multiple transfers on that date. Could you share the recipient number so we can identify the right transaction? Please do not share your PIN or OTP with anyone.',
     };
   }
 

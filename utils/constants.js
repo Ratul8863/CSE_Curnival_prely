@@ -46,12 +46,20 @@ const KEYWORDS = Object.freeze({
     'sent by mistake', 'sent to wrong', 'transferred to wrong',
     'reverse transfer', 'reverse the transfer', 'reverse this',
     'not responding', 'recipient not responding', 'wrongly sent', 'accidentally sent',
+    // Transfer-dispute / non-receipt phrases.
+    'did not get', 'didn\'t get', 'did not receive', 'didn\'t receive',
+    'has not received', 'hasn\'t received', 'not received',
+    'money not received', 'not credited to recipient', 'recipient did not get',
+    'recipient didn\'t get', 'recipient not received', 'recipient says',
+    'brother says', 'he says', 'she says', 'they say',
   ],
   paymentFailed: [
     'payment failed', 'payment not successful', 'transaction failed',
     'recharge failed', 'recharge not successful', 'bill failed', 'bill pay failed',
     'balance deducted', 'money deducted', 'amount deducted',
     'deducted but not received', 'failed but money debited', 'failed but deducted',
+    // Single-word fallbacks so "but the app showed failed" still routes here.
+    'failed', 'recharge',
   ],
   duplicatePayment: [
     'deducted twice', 'charged twice', 'paid twice', 'double charge',

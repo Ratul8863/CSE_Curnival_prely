@@ -25,6 +25,40 @@ curl http://localhost:8000/health
 
 ---
 
+## Live deployment
+
+Base URL:
+
+```text
+https://cse-curnival-preliminary.onrender.com
+```
+
+Health check:
+
+```bash
+curl https://cse-curnival-preliminary.onrender.com/health
+```
+
+Analyze endpoint:
+
+```text
+POST https://cse-curnival-preliminary.onrender.com/analyze-ticket
+```
+
+## Environment variables
+
+No environment variables are required for judging.
+
+Optional:
+
+```env
+PORT=8000
+```
+
+No API keys are required. The service is fully self-contained — no external LLM, AI service, payment API, or third-party call is made at runtime.
+
+---
+
 ## Endpoints
 
 ### `GET /health`
@@ -213,6 +247,24 @@ Latest local run:
 
 - `npm run smoke` → **11 passed, 0 failed**
 - `npm run samples` → **10 passed, 0 failed**
+
+Latest deployed run (against the Render live URL):
+
+```bash
+SMOKE_BASE_URL=https://cse-curnival-preliminary.onrender.com npm run smoke
+SMOKE_BASE_URL=https://cse-curnival-preliminary.onrender.com npm run samples
+```
+
+- `SMOKE_BASE_URL=https://cse-curnival-preliminary.onrender.com npm run smoke` → **11 passed, 0 failed**
+- `SMOKE_BASE_URL=https://cse-curnival-preliminary.onrender.com npm run samples` → **10 passed, 0 failed**
+
+PowerShell equivalent:
+
+```powershell
+$env:SMOKE_BASE_URL = "https://cse-curnival-preliminary.onrender.com"
+npm run smoke
+npm run samples
+```
 
 ---
 

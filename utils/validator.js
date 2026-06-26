@@ -39,6 +39,43 @@ const RESPONSE_FIELDS = [
   'reason_codes',
 ];
 
+// Phrases that look like attempts to override our system rules. Sentences
+// containing them are dropped from the complaint before any further analysis.
+const INJECTION_PATTERNS = [
+  /ignore\s+(?:all\s+)?(?:previous|prior|above|earlier)\s+(?:instructions|prompts?|rules?)/i,
+  /disregard\s+(?:all\s+)?(?:previous|prior|above)\s+(?:instructions|prompts?)/i,
+  /forget\s+(?:all\s+)?(?:previous|prior)\s+(?:instructions|rules?)/i,
+  /\b(?:system\s+prompt|system\s+message)\b/i,
+  /\b(?:you\s+are\s+now|act\s+as|pretend\s+to\s+be|roleplay\s+as)\b/i,
+  /\boverride\s+(?:the\s+)?(?:rules?|system|safety)\b/i,
+  /\bjailbreak\b/i,
+  /\bprompt\s+injection\b/i,
+  /\bdo\s+not\s+follow\s+(?:the\s+)?rules?\b/i,
+  /\bbypass\s+(?:the\s+)?(?:rules?|safety|filter)\b/i,
+];
+
+// Drop sentences that contain prompt-injection attempts. We do NOT alter the
+// user-facing complaint wholesale — we only remove the offending sentence and
+// collapse the remaining text, so a legitimate complaint that happens to
+// mention e.g. "override" in a normal sentence still parses.
+function neutralizeInjection(text) {
+  if (typeof text !== 'string' || !text) return { value: '', removedAny: false };
+  const sentences = text.split(/(?<=[.!?\n])\s+|\n+/);
+  const kept = [];
+  let removedAny = false;
+  for (const raw of sentences) {
+    const s = (raw || '').trim();
+    if (!s) continue;
+    const isInjection = INJECTION_PATTERNS.some((p) => p.test(s));
+    if (isInjection) {
+      removedAny = true;
+      continue;
+    }
+    kept.push(s);
+  }
+  return { value: kept.join(' ').trim(), removedAny };
+}
+
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
@@ -145,8 +182,13 @@ function cleanRequest(raw) {
     errors.push('complaint is required.');
   }
 
+  // Prompt-injection neutralization: drop sentences that try to override our
+  // rules. The cleaned complaint is what the analyzer actually sees.
+  const injection = neutralizeInjection(complaintRaw);
+
   req.ticket_id = ticketId;
-  req.complaint = complaintRaw;
+  req.complaint = injection.value;
+  req._complaint_injection_neutralized = injection.removedAny === true;
   req.language = clampEnum(req.language, ENUMS.language, null);
   req.channel = clampEnum(req.channel, ENUMS.channel, null);
   req.user_type = clampEnum(req.user_type, ENUMS.userType, 'unknown');
@@ -191,6 +233,7 @@ function validateAndFixResponse(resp) {
 module.exports = {
   REQUEST_FIELDS,
   RESPONSE_FIELDS,
+  INJECTION_PATTERNS,
   isPlainObject,
   clampEnum,
   toBoolean,
@@ -198,6 +241,7 @@ module.exports = {
   clampConfidence,
   cleanString,
   cleanReasonCodes,
+  neutralizeInjection,
   cleanRequest,
   validateAndFixResponse,
 };

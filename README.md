@@ -104,6 +104,8 @@ utils/validator.js        Request/response cleaning + final schema validator
 utils/safety.js           Sanitizes unsafe phrases in customer_reply
 utils/responseFactory.js  Safe default response scaffold
 samples/                  sample-request.json, sample-output.json
+scripts/smoke-test.js           Local smoke test (custom scenarios)
+scripts/test-official-samples.js  Runs docs/SUST_Preli_Sample_Cases.json
 .env.example              Optional environment template
 ```
 
@@ -166,6 +168,56 @@ If `language === "bn"` or the complaint is mostly Bangla, the `customer_reply` i
 - `amount` may be supplied in either English digits or Bangla digits.
 - Phone numbers in the complaint are matched against `counterparty` substrings; exact-match is not required.
 - The customer is always redirected to **official** channels, never to a third party.
+
+## Testing
+
+The project ships with two offline test runners. They use Node's built-in `fetch`, so no extra dependencies are required.
+
+Start the server first in one terminal:
+
+```bash
+npm run dev
+# or
+npm start
+```
+
+Then, in another terminal:
+
+```bash
+# Custom smoke tests — covers wrong transfer, repeated recipient, phishing,
+# failed payment, duplicate payment, Bangla cash-in, merchant settlement,
+# vague complaint, missing ticket_id, and empty complaint.
+npm run smoke
+```
+
+Expected last line:
+
+```
+Smoke test: 11 passed, 0 failed (11 total)
+```
+
+```bash
+# Official sample cases — runs every case in docs/SUST_Preli_Sample_Cases.json,
+# hard-compares relevant_transaction_id / evidence_verdict / case_type /
+# department, warns on adjacent severity tiers, and verifies customer_reply
+# safety (no credential asks, no hard refund/reversal promises).
+npm run samples
+```
+
+Expected last line (severity-tier warnings are non-fatal):
+
+```
+Official samples: 10 passed, 0 failed, 3 warning(s) (10 total)
+```
+
+Both runners exit non-zero on any hard failure, so they're safe to wire into CI. Override the base URL with `SMOKE_BASE_URL`, e.g. `SMOKE_BASE_URL=http://127.0.0.1:8000 npm run samples`.
+
+Latest local run:
+
+- `npm run smoke` → **11 passed, 0 failed**
+- `npm run samples` → **10 passed, 0 failed**
+
+---
 
 ## Limitations
 

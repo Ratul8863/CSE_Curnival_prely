@@ -52,6 +52,15 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Static tester page. The page is plain HTML/CSS/JS under public/.
+// index.html is served at GET /. Other assets (none today) are served
+// directly from public/. All /api/* style endpoints keep working.
+const path = require('path');
+app.use('/static', express.static(path.join(__dirname, 'public'), { fallthrough: true, index: false }));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 app.use('/', analyzeRouter);
 
 // Generic 404 for unknown routes.

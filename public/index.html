@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QueueStorm Investigator API Tester</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #0b1220;
+      --line: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #22c55e;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }
+    header {
+      padding: 18px 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    header small { color: var(--muted); }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 16px 24px 32px;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 360px;
+    }
+    .panel h2 {
+      font-size: 14px;
+      margin: 0 0 10px 0;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    textarea {
+      flex: 1;
+      min-height: 260px;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: var(--accent); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button {
+      cursor: pointer;
+      background: var(--accent);
+      color: #0b1220;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: #1f2937;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .meta {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+    }
+    .badge.ok { background: rgba(34,197,94,0.12); color: var(--accent-2); border-color: rgba(34,197,94,0.4); }
+    .badge.err { background: rgba(239,68,68,0.12); color: var(--danger); border-color: rgba(239,68,68,0.4); }
+    .badge.warn { background: rgba(245,158,11,0.12); color: var(--warn); border-color: rgba(245,158,11,0.4); }
+    pre {
+      flex: 1;
+      margin: 0;
+      padding: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      white-space: pre;
+    }
+    .err-box {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.4);
+      color: #fecaca;
+      font-size: 13px;
+      display: none;
+    }
+    .err-box.show { display: block; }
+    footer {
+      padding: 12px 24px 24px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    footer code { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>QueueStorm Investigator API Tester</h1>
+    <small>manual test page · posts to <code>/analyze-ticket</code></small>
+  </header>
+
+  <main>
+    <section class="panel" aria-label="Request editor">
+      <h2>Request body (JSON)</h2>
+      <textarea id="req" spellcheck="false" aria-label="Request JSON"></textarea>
+      <div class="toolbar">
+        <button id="analyzeBtn" type="button">Analyze Ticket</button>
+        <button id="loadWrong" class="secondary" type="button">Load Wrong Transfer Sample</button>
+        <button id="loadPhishing" class="secondary" type="button">Load Phishing Sample</button>
+        <button id="loadDuplicate" class="secondary" type="button">Load Duplicate Payment Sample</button>
+      </div>
+      <div class="err-box" id="errBox" role="alert"></div>
+    </section>
+
+    <section class="panel" aria-label="Response viewer">
+      <h2>Response</h2>
+      <pre id="resp">(no response yet — click "Analyze Ticket")</pre>
+      <div class="meta">
+        <span id="statusBadge" class="badge">HTTP —</span>
+        <span id="statusText" class="muted">awaiting request</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Endpoints: <code>POST /analyze-ticket</code> · <code>GET /health</code>.
+    This page is plain HTML/CSS/JS — no build step.
+  </footer>
+
+  <script>
+    const SAMPLES = {
+      wrong: {
+        ticket_id: 'TKT-WEB-1',
+        complaint: 'I sent 5000 taka to the wrong number by mistake. Please reverse it.',
+        language: 'en',
+        channel: 'in_app_chat',
+        user_type: 'customer',
+        transaction_history: [
+          {
+            transaction_id: 'TXN-WEB-1',
+            timestamp: '2026-04-14T14:08:22Z',
+            type: 'transfer',
+            amount: 5000,
+            counterparty: '+8801719876543',
+            status: 'completed',
+          },
+        ],
+        metadata: {},
+      },
+      phishing: {
+        ticket_id: 'TKT-WEB-2',
+        complaint: 'Someone called me saying they are from bKash and asked for my OTP. They said my account will be blocked if I do not share. Is this real?',
+        language: 'en',
+        channel: 'call_center',
+        user_type: 'customer',
+        transaction_history: [],
+        metadata: {},
+      },
+      duplicate: {
+        ticket_id: 'TKT-WEB-3',
+        complaint: 'I was charged twice 750 taka for the same bill.',
+        language: 'en',
+        channel: 'in_app_chat',
+        user_type: 'customer',
+        transaction_history: [
+          {
+            transaction_id: 'TXN-WEB-3A',
+            timestamp: '2026-04-14T10:00:00Z',
+            type: 'payment',
+            amount: 750,
+            counterparty: 'BILLER-DESCO',
+            status: 'completed',
+          },
+          {
+            transaction_id: 'TXN-WEB-3B',
+            timestamp: '2026-04-14T10:00:30Z',
+            type: 'payment',
+            amount: 750,
+            counterparty: 'BILLER-DESCO',
+            status: 'completed',
+          },
+        ],
+        metadata: {},
+      },
+    };
+
+    const reqEl = document.getElementById('req');
+    const respEl = document.getElementById('resp');
+    const errBox = document.getElementById('errBox');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+
+    function setSample(name) {
+      const s = SAMPLES[name];
+      if (!s) return;
+      reqEl.value = JSON.stringify(s, null, 2);
+      clearError();
+    }
+
+    function showError(msg) {
+      errBox.textContent = msg;
+      errBox.classList.add('show');
+    }
+
+    function clearError() {
+      errBox.textContent = '';
+      errBox.classList.remove('show');
+    }
+
+    function setBadge(status) {
+      statusBadge.classList.remove('ok', 'err', 'warn');
+      if (status >= 200 && status < 300) {
+        statusBadge.classList.add('ok');
+        statusBadge.textContent = `HTTP ${status}`;
+      } else if (status >= 400) {
+        statusBadge.classList.add('err');
+        statusBadge.textContent = `HTTP ${status}`;
+      } else {
+        statusBadge.classList.add('warn');
+        statusBadge.textContent = `HTTP ${status}`;
+      }
+    }
+
+    async function sendRequest() {
+      clearError();
+      statusText.textContent = 'sending...';
+      statusBadge.classList.remove('ok', 'err', 'warn');
+      statusBadge.textContent = 'HTTP —';
+
+      let body;
+      try {
+        body = JSON.parse(reqEl.value);
+      } catch (err) {
+        showError('Invalid JSON in request body: ' + err.message);
+        respEl.textContent = '(request not sent — fix JSON first)';
+        statusText.textContent = 'parse error';
+        statusBadge.classList.add('err');
+        statusBadge.textContent = 'parse';
+        return;
+      }
+
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch('/analyze-ticket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        setBadge(res.status);
+        let parsed;
+        const text = await res.text();
+        try {
+          parsed = JSON.parse(text);
+          respEl.textContent = JSON.stringify(parsed, null, 2);
+        } catch (_) {
+          respEl.textContent = text || '(empty body)';
+        }
+        statusText.textContent = `done at ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        showError('Network error: ' + err.message);
+        respEl.textContent = '(network error)';
+        statusText.textContent = 'network error';
+        statusBadge.classList.add('err');
+        statusBadge.textContent = 'network';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze Ticket';
+      }
+    }
+
+    document.getElementById('analyzeBtn').addEventListener('click', sendRequest);
+    document.getElementById('loadWrong').addEventListener('click', () => setSample('wrong'));
+    document.getElementById('loadPhishing').addEventListener('click', () => setSample('phishing'));
+    document.getElementById('loadDuplicate').addEventListener('click', () => setSample('duplicate'));
+
+    // Default content on first load.
+    setSample('wrong');
+  </script>
+</body>
+</html>

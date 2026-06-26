@@ -85,23 +85,21 @@ function containsForbidden(text) {
   return FORBIDDEN_PHRASES.some((p) => lower.includes(p));
 }
 
-// Ensure a safe PIN/OTP warning is present when the topic touches credentials or fraud.
+// Ensure a safe PIN/OTP warning is present in customer-facing text.
+// Always appends the language-appropriate reminder if a safe warning is not
+// already present. This guarantees every customer_reply carries the guardrail,
+// regardless of whether the topic explicitly mentions credentials.
 function ensureSafeWarning(text, opts = {}) {
   if (typeof text !== 'string' || !text) return text;
-  const lower = text.toLowerCase();
-  const touchesSensitive = [
-    'otp', 'pin', 'password', 'passcode', 'cvv', 'verification code', 'security code',
-    'scam', 'fraud', 'phishing', 'suspicious', 'credential',
-  ].some((w) => lower.includes(w));
-  if (!touchesSensitive) return text;
   const lang = opts.language === 'bn' ? 'bn' : 'en';
   const warning = lang === 'bn' ? SAFE_PIN_WARNING_BN : SAFE_PIN_WARNING_EN;
-  if (lower.includes('pin') || lower.includes('otp') || lower.includes('password')) {
-    if (!lower.includes('do not share your pin') && !lower.includes('do not share your otp') && !lower.includes('শেয়ার করবেন না')) {
-      return `${text} ${warning}`;
-    }
-  }
-  return text;
+  const lower = text.toLowerCase();
+  const alreadyHasWarning =
+    lower.includes('do not share your pin') ||
+    lower.includes('do not share your otp') ||
+    text.includes('শেয়ার করবেন না');
+  if (alreadyHasWarning) return text;
+  return `${text} ${warning}`;
 }
 
 // Final sanitizer for the whole response.

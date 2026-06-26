@@ -6,7 +6,9 @@
   <title>QueueStorm Investigator API Tester</title>
   <style>
     :root {
-      --bg: #0f172a;
+      --bg: #0b1220;
+      --bg-grad-1: #0b1220;
+      --bg-grad-2: #0f172a;
       --panel: #111827;
       --panel-2: #0b1220;
       --line: #1f2937;
@@ -14,6 +16,7 @@
       --muted: #94a3b8;
       --accent: #38bdf8;
       --accent-2: #22c55e;
+      --accent-3: #a78bfa;
       --danger: #ef4444;
       --warn: #f59e0b;
     }
@@ -21,70 +24,135 @@
     html, body {
       margin: 0;
       padding: 0;
-      background: var(--bg);
+      min-height: 100%;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(56,189,248,0.10), transparent 60%),
+        radial-gradient(900px 500px at 110% 10%, rgba(167,139,250,0.08), transparent 60%),
+        linear-gradient(180deg, var(--bg-grad-1), var(--bg-grad-2));
+      background-attachment: fixed;
       color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       line-height: 1.5;
+      overflow-x: hidden;
     }
-    header {
-      padding: 18px 24px;
-      background: var(--panel);
+    header.app-header {
+      padding: 22px 24px 18px;
+      background: linear-gradient(180deg, rgba(17,24,39,0.85), rgba(17,24,39,0.55));
       border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(6px);
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .header-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: baseline;
-      gap: 12px;
+      gap: 10px 16px;
     }
-    header h1 {
+    .header-row h1 {
       margin: 0;
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
-    header small { color: var(--muted); }
+    .header-row .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid var(--line);
+      background: rgba(15,23,42,0.6);
+      color: var(--text);
+    }
+    .badge-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+    .badge-pill.live { color: var(--accent-2); border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.08); }
+    .badge-pill.rules { color: var(--accent); border-color: rgba(56,189,248,0.4); background: rgba(56,189,248,0.08); }
+    .badge-pill.safe { color: var(--accent-3); border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.08); }
     main {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      padding: 16px 24px 32px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px 24px 28px;
+      max-width: 1400px;
+      margin: 0 auto;
     }
     @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; }
+      main {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 16px;
+      }
     }
     .panel {
-      background: var(--panel);
+      background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(11,18,32,0.9));
       border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 14px 16px;
+      border-radius: 12px;
+      padding: 16px 18px;
       display: flex;
       flex-direction: column;
-      min-height: 360px;
+      min-width: 0;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 8px 24px rgba(0,0,0,0.25);
     }
     .panel h2 {
-      font-size: 14px;
-      margin: 0 0 10px 0;
+      font-size: 12px;
+      margin: 0 0 12px 0;
       color: var(--muted);
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
     textarea {
+      width: 100%;
       flex: 1;
-      min-height: 260px;
+      min-height: 280px;
       background: var(--panel-2);
       color: var(--text);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 12px 14px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 13px;
+      line-height: 1.55;
       resize: vertical;
       outline: none;
+      white-space: pre;
+      overflow: auto;
     }
-    textarea:focus { border-color: var(--accent); }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(56,189,248,0.15);
+    }
     .toolbar {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 10px;
+      margin-top: 12px;
+      align-items: center;
+    }
+    .toolbar.samples {
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
     }
     button {
       cursor: pointer;
@@ -92,19 +160,25 @@
       color: #0b1220;
       border: 0;
       border-radius: 8px;
-      padding: 8px 12px;
+      padding: 9px 14px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
+      transition: filter 0.15s ease, transform 0.05s ease;
     }
     button.secondary {
       background: #1f2937;
       color: var(--text);
       border: 1px solid var(--line);
     }
-    button:hover { filter: brightness(1.08); }
+    button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button:hover { filter: brightness(1.10); }
+    button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .meta {
-      margin-top: 10px;
       display: flex;
       gap: 10px;
       align-items: center;
@@ -114,26 +188,94 @@
     }
     .badge {
       display: inline-block;
-      padding: 2px 8px;
+      padding: 2px 10px;
       border-radius: 999px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       border: 1px solid var(--line);
+      background: rgba(15,23,42,0.6);
     }
     .badge.ok { background: rgba(34,197,94,0.12); color: var(--accent-2); border-color: rgba(34,197,94,0.4); }
     .badge.err { background: rgba(239,68,68,0.12); color: var(--danger); border-color: rgba(239,68,68,0.4); }
     .badge.warn { background: rgba(245,158,11,0.12); color: var(--warn); border-color: rgba(245,158,11,0.4); }
     pre {
-      flex: 1;
+      width: 100%;
       margin: 0;
-      padding: 12px;
+      padding: 14px;
       background: var(--panel-2);
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 13px;
-      white-space: pre;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      max-width: 100%;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 600px) {
+      .summary { grid-template-columns: minmax(0, 1fr); }
+    }
+    .summary .item {
+      background: rgba(15,23,42,0.55);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-width: 0;
+    }
+    .summary .item .k {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .summary .item .v {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .readable {
+      background: rgba(15,23,42,0.55);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      min-width: 0;
+    }
+    .readable .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .readable .body {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .readable .body.muted { color: var(--muted); font-style: italic; }
+    .raw-json-wrap { margin-top: 4px; }
+    .raw-json-wrap h3 {
+      font-size: 11px;
+      margin: 0 0 8px 0;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
     .err-box {
       margin-top: 10px;
@@ -144,20 +286,51 @@
       color: #fecaca;
       font-size: 13px;
       display: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .err-box.show { display: block; }
     footer {
-      padding: 12px 24px 24px;
+      padding: 14px 24px 28px;
       color: var(--muted);
       font-size: 12px;
+      max-width: 1400px;
+      margin: 0 auto;
     }
     footer code { color: var(--text); }
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      background: rgba(17,24,39,0.95);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+      z-index: 1000;
+      max-width: calc(100% - 40px);
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
   </style>
 </head>
 <body>
-  <header>
-    <h1>QueueStorm Investigator API Tester</h1>
-    <small>manual test page · posts to <code>/analyze-ticket</code></small>
+  <header class="app-header">
+    <div class="header-row">
+      <h1>QueueStorm Investigator</h1>
+      <span class="subtitle">Evidence-Based FinTech Complaint Investigation API</span>
+    </div>
+    <div class="badges" aria-label="System status">
+      <span class="badge-pill live"><span class="dot"></span>Live API</span>
+      <span class="badge-pill rules"><span class="dot"></span>Rule-Based</span>
+      <span class="badge-pill safe"><span class="dot"></span>Safety Guarded</span>
+    </div>
   </header>
 
   <main>
@@ -166,6 +339,11 @@
       <textarea id="req" spellcheck="false" aria-label="Request JSON"></textarea>
       <div class="toolbar">
         <button id="analyzeBtn" type="button">Analyze Ticket</button>
+        <button id="formatBtn" class="secondary" type="button">Format JSON</button>
+        <button id="clearBtn" class="ghost" type="button">Clear</button>
+        <button id="healthBtn" class="ghost" type="button">Test Health</button>
+      </div>
+      <div class="toolbar samples">
         <button id="loadWrong" class="secondary" type="button">Load Wrong Transfer Sample</button>
         <button id="loadPhishing" class="secondary" type="button">Load Phishing Sample</button>
         <button id="loadDuplicate" class="secondary" type="button">Load Duplicate Payment Sample</button>
@@ -175,10 +353,35 @@
 
     <section class="panel" aria-label="Response viewer">
       <h2>Response</h2>
-      <pre id="resp">(no response yet — click "Analyze Ticket")</pre>
-      <div class="meta">
-        <span id="statusBadge" class="badge">HTTP —</span>
-        <span id="statusText" class="muted">awaiting request</span>
+
+      <div class="summary" id="summary" aria-label="Response summary">
+        <div class="item"><span class="k">HTTP</span><span class="v" id="sumHttp">—</span></div>
+        <div class="item"><span class="k">Time</span><span class="v" id="sumTime">—</span></div>
+        <div class="item"><span class="k">case_type</span><span class="v" id="sumCase">—</span></div>
+        <div class="item"><span class="k">evidence_verdict</span><span class="v" id="sumVerdict">—</span></div>
+        <div class="item"><span class="k">department</span><span class="v" id="sumDept">—</span></div>
+        <div class="item"><span class="k">human_review_required</span><span class="v" id="sumReview">—</span></div>
+      </div>
+
+      <div class="readable" aria-label="Customer reply">
+        <div class="label">customer_reply</div>
+        <div class="body muted" id="readableReply">(no response yet)</div>
+      </div>
+      <div class="readable" aria-label="Recommended next action">
+        <div class="label">recommended_next_action</div>
+        <div class="body muted" id="readableAction">(no response yet)</div>
+      </div>
+
+      <div class="raw-json-wrap">
+        <h3>Raw JSON</h3>
+        <div class="meta" style="margin-bottom:8px;">
+          <span id="statusBadge" class="badge">HTTP —</span>
+          <span id="statusText" class="muted">awaiting request</span>
+        </div>
+        <pre id="resp">(no response yet — click "Analyze Ticket")</pre>
+        <div class="toolbar" style="margin-top:10px;">
+          <button id="copyBtn" class="secondary" type="button">Copy Response</button>
+        </div>
       </div>
     </section>
   </main>
@@ -187,6 +390,8 @@
     Endpoints: <code>POST /analyze-ticket</code> · <code>GET /health</code>.
     This page is plain HTML/CSS/JS — no build step.
   </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
     const SAMPLES = {
@@ -250,6 +455,25 @@
     const errBox = document.getElementById('errBox');
     const statusBadge = document.getElementById('statusBadge');
     const statusText = document.getElementById('statusText');
+    const sumHttp = document.getElementById('sumHttp');
+    const sumTime = document.getElementById('sumTime');
+    const sumCase = document.getElementById('sumCase');
+    const sumVerdict = document.getElementById('sumVerdict');
+    const sumDept = document.getElementById('sumDept');
+    const sumReview = document.getElementById('sumReview');
+    const readableReply = document.getElementById('readableReply');
+    const readableAction = document.getElementById('readableAction');
+    const toastEl = document.getElementById('toast');
+
+    let lastResponseText = '';
+    let toastTimer = null;
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+    }
 
     function setSample(name) {
       const s = SAMPLES[name];
@@ -282,11 +506,186 @@
       }
     }
 
+    function resetSummary() {
+      sumHttp.textContent = '—';
+      sumTime.textContent = '—';
+      sumCase.textContent = '—';
+      sumVerdict.textContent = '—';
+      sumDept.textContent = '—';
+      sumReview.textContent = '—';
+      readableReply.textContent = '(no response yet)';
+      readableReply.classList.add('muted');
+      readableAction.textContent = '(no response yet)';
+      readableAction.classList.add('muted');
+    }
+
+    function applySummary(parsed) {
+      if (!parsed || typeof parsed !== 'object') {
+        sumCase.textContent = '—';
+        sumVerdict.textContent = '—';
+        sumDept.textContent = '—';
+        sumReview.textContent = '—';
+        readableReply.textContent = '(response is not a JSON object)';
+        readableReply.classList.add('muted');
+        readableAction.textContent = '(response is not a JSON object)';
+        readableAction.classList.add('muted');
+        return;
+      }
+      const get = (k) => (parsed && parsed[k] != null) ? String(parsed[k]) : '—';
+      sumCase.textContent = get('case_type');
+      sumVerdict.textContent = get('evidence_verdict');
+      sumDept.textContent = get('department');
+      sumReview.textContent = get('human_review_required');
+
+      const reply = parsed.customer_reply;
+      if (reply != null && String(reply).length > 0) {
+        readableReply.textContent = String(reply);
+        readableReply.classList.remove('muted');
+      } else {
+        readableReply.textContent = '(no customer_reply in response)';
+        readableReply.classList.add('muted');
+      }
+      const action = parsed.recommended_next_action;
+      if (action != null && String(action).length > 0) {
+        readableAction.textContent = String(action);
+        readableAction.classList.remove('muted');
+      } else {
+        readableAction.textContent = '(no recommended_next_action in response)';
+        readableAction.classList.add('muted');
+      }
+    }
+
+    function formatRequestJson() {
+      const raw = reqEl.value;
+      if (!raw.trim()) {
+        reqEl.value = '';
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        reqEl.value = JSON.stringify(parsed, null, 2);
+        clearError();
+        showToast('JSON formatted');
+      } catch (err) {
+        showError('Invalid JSON: ' + err.message);
+      }
+    }
+
+    function clearAll() {
+      reqEl.value = '';
+      respEl.textContent = '(no response yet — click "Analyze Ticket")';
+      lastResponseText = '';
+      errBox.textContent = '';
+      errBox.classList.remove('show');
+      statusBadge.classList.remove('ok', 'err', 'warn');
+      statusBadge.textContent = 'HTTP —';
+      statusText.textContent = 'awaiting request';
+      resetSummary();
+      showToast('Cleared');
+    }
+
+    async function copyResponse() {
+      const text = lastResponseText || respEl.textContent || '';
+      if (!text || text.startsWith('(no response')) {
+        showToast('Nothing to copy yet');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Response copied');
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast('Response copied');
+        } catch (e) {
+          showToast('Copy failed');
+        } finally {
+          document.body.removeChild(ta);
+        }
+      }
+    }
+
+    async function testHealth() {
+      clearError();
+      const btn = document.getElementById('healthBtn');
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'Checking...';
+      const started = performance.now();
+      try {
+        const res = await fetch('/health', { method: 'GET' });
+        const elapsed = Math.round(performance.now() - started);
+        const text = await res.text();
+        setBadge(res.status);
+        statusText.textContent = `done at ${new Date().toLocaleTimeString()}`;
+        sumHttp.textContent = `HTTP ${res.status}`;
+        sumTime.textContent = `${elapsed} ms`;
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch (_) { /* leave null */ }
+        if (parsed && typeof parsed === 'object') {
+          respEl.textContent = JSON.stringify(parsed, null, 2);
+          lastResponseText = respEl.textContent;
+          // For /health, summary keys may not match — leave summary cards as-is but
+          // still try to surface common fields if present.
+          sumCase.textContent = parsed.case_type != null ? String(parsed.case_type) : '—';
+          sumVerdict.textContent = parsed.evidence_verdict != null ? String(parsed.evidence_verdict) : '—';
+          sumDept.textContent = parsed.department != null ? String(parsed.department) : '—';
+          sumReview.textContent = parsed.human_review_required != null ? String(parsed.human_review_required) : '—';
+          const reply = parsed.customer_reply;
+          if (reply != null && String(reply).length > 0) {
+            readableReply.textContent = String(reply);
+            readableReply.classList.remove('muted');
+          } else {
+            readableReply.textContent = '(not applicable for /health)';
+            readableReply.classList.add('muted');
+          }
+          const action = parsed.recommended_next_action;
+          if (action != null && String(action).length > 0) {
+            readableAction.textContent = String(action);
+            readableAction.classList.remove('muted');
+          } else {
+            readableAction.textContent = '(not applicable for /health)';
+            readableAction.classList.add('muted');
+          }
+        } else {
+          respEl.textContent = text || '(empty body)';
+          lastResponseText = respEl.textContent;
+          sumCase.textContent = '—';
+          sumVerdict.textContent = '—';
+          sumDept.textContent = '—';
+          sumReview.textContent = '—';
+          readableReply.textContent = '(not applicable for /health)';
+          readableReply.classList.add('muted');
+          readableAction.textContent = '(not applicable for /health)';
+          readableAction.classList.add('muted');
+        }
+      } catch (err) {
+        showError('Network error: ' + err.message);
+        respEl.textContent = '(network error)';
+        lastResponseText = '';
+        statusText.textContent = 'network error';
+        statusBadge.classList.add('err');
+        statusBadge.textContent = 'network';
+        sumHttp.textContent = 'network';
+        sumTime.textContent = '—';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
     async function sendRequest() {
       clearError();
       statusText.textContent = 'sending...';
       statusBadge.classList.remove('ok', 'err', 'warn');
       statusBadge.textContent = 'HTTP —';
+      resetSummary();
 
       let body;
       try {
@@ -294,37 +693,49 @@
       } catch (err) {
         showError('Invalid JSON in request body: ' + err.message);
         respEl.textContent = '(request not sent — fix JSON first)';
+        lastResponseText = '';
         statusText.textContent = 'parse error';
         statusBadge.classList.add('err');
         statusBadge.textContent = 'parse';
+        sumHttp.textContent = 'parse';
+        sumTime.textContent = '—';
         return;
       }
 
       const btn = document.getElementById('analyzeBtn');
       btn.disabled = true;
       btn.textContent = 'Sending...';
+      const started = performance.now();
       try {
         const res = await fetch('/analyze-ticket', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
+        const elapsed = Math.round(performance.now() - started);
         setBadge(res.status);
-        let parsed;
+        sumHttp.textContent = `HTTP ${res.status}`;
+        sumTime.textContent = `${elapsed} ms`;
         const text = await res.text();
+        let parsed = null;
         try {
           parsed = JSON.parse(text);
           respEl.textContent = JSON.stringify(parsed, null, 2);
         } catch (_) {
           respEl.textContent = text || '(empty body)';
         }
+        lastResponseText = respEl.textContent;
+        applySummary(parsed);
         statusText.textContent = `done at ${new Date().toLocaleTimeString()}`;
       } catch (err) {
         showError('Network error: ' + err.message);
         respEl.textContent = '(network error)';
+        lastResponseText = '';
         statusText.textContent = 'network error';
         statusBadge.classList.add('err');
         statusBadge.textContent = 'network';
+        sumHttp.textContent = 'network';
+        sumTime.textContent = '—';
       } finally {
         btn.disabled = false;
         btn.textContent = 'Analyze Ticket';
@@ -332,6 +743,10 @@
     }
 
     document.getElementById('analyzeBtn').addEventListener('click', sendRequest);
+    document.getElementById('formatBtn').addEventListener('click', formatRequestJson);
+    document.getElementById('clearBtn').addEventListener('click', clearAll);
+    document.getElementById('copyBtn').addEventListener('click', copyResponse);
+    document.getElementById('healthBtn').addEventListener('click', testHealth);
     document.getElementById('loadWrong').addEventListener('click', () => setSample('wrong'));
     document.getElementById('loadPhishing').addEventListener('click', () => setSample('phishing'));
     document.getElementById('loadDuplicate').addEventListener('click', () => setSample('duplicate'));

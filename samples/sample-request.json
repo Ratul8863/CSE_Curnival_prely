@@ -1,0 +1,27 @@
+{
+  "ticket_id": "TKT-DEMO-001",
+  "complaint": "I tried to send 5000 taka to my friend's number 01719876543 but the recipient says they did not get the money. I think I sent it to the wrong number by mistake.",
+  "language": "en",
+  "channel": "in_app_chat",
+  "user_type": "customer",
+  "campaign_context": null,
+  "transaction_history": [
+    {
+      "transaction_id": "TXN-9001",
+      "timestamp": "2026-04-14T14:08:22Z",
+      "type": "transfer",
+      "amount": 5000,
+      "counterparty": "+8801712987654",
+      "status": "completed"
+    },
+    {
+      "transaction_id": "TXN-9002",
+      "timestamp": "2026-04-13T09:01:11Z",
+      "type": "transfer",
+      "amount": 5000,
+      "counterparty": "+8801712987654",
+      "status": "completed"
+    }
+  ],
+  "metadata": {}
+}

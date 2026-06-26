@@ -1,0 +1,19 @@
+{
+  "ticket_id": "TKT-DEMO-001",
+  "relevant_transaction_id": "TXN-9001",
+  "evidence_verdict": "inconsistent",
+  "case_type": "wrong_transfer",
+  "severity": "high",
+  "department": "dispute_resolution",
+  "agent_summary": "Customer reports a transfer sent to the wrong recipient (likely txn TXN-9001).",
+  "recommended_next_action": "Verify recipient history and refer to dispute_resolution for review.",
+  "customer_reply": "We have received your complaint. Our team will review the transfer and take the appropriate steps. Any eligible amount will be returned through official channels only.",
+  "human_review_required": true,
+  "confidence": 0.75,
+  "reason_codes": [
+    "wrong_transfer_keywords",
+    "repeated_recipient_pattern",
+    "severity_high",
+    "lang_en"
+  ]
+}
